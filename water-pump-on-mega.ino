@@ -1,11 +1,6 @@
 #include "WiFiEsp.h"
 #include <PubSubClient.h>
 
-// TODO: отправлять среднее вреся работы насоса в mqtt
-// TODO: добавить проверку что если работа насоса превышает среднее время работы насоса, то сбрасывать его и слать лог с ошибкой
-// TODO: добавить очередь команды которые будут посылаться в mqtt
-// TODO: добавить поддержку датчика протечки и прерывать работу насоса и слать сообщение с ошибкой в mqtt
-
 // Emulate Serial1 on pins 6/7 if not present
 #ifndef HAVE_HWSERIAL1
 #include "SoftwareSerial.h"
