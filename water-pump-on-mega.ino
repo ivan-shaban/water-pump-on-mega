@@ -1,9 +1,13 @@
 #include "WiFiEsp.h"
 #include <PubSubClient.h>
+#include "Data.h"
+#include "credentials.h"
 
 // Emulate Serial1 on pins 6/7 if not present
 #ifndef HAVE_HWSERIAL1
+
 #include "SoftwareSerial.h"
+
 SoftwareSerial Serial1(6, 7); // RX, TX
 #endif
 
@@ -28,8 +32,6 @@ SoftwareSerial Serial1(6, 7); // RX, TX
 #define RELAY_PORT_8 A0
 
 // network section
-char ssid[] = "Lords-Network-2.4Ghz";
-char pass[] = "qBM029qBM029";
 int status = WL_IDLE_STATUS;     // the Wifi radio's status
 
 // mqtt section
@@ -45,15 +47,16 @@ long waterSensorTimestamp = 0;
 long lastWaterPumpStartTimestamp = 0;
 
 
-void callback(char* topic, byte* payload, unsigned int length) {
+void callback(char *topic, byte *payload, unsigned int length) {
     Serial.print("Message arrived [");
     Serial.print(topic);
     Serial.print("] ");
     for (int i = 0; i < length; i++) {
-        Serial.print((char)payload[i]);
+        Serial.print((char) payload[i]);
     }
     Serial.println();
 }
+
 // Initialize the Ethernet client object
 WiFiEspClient espClient;
 PubSubClient mqttClient(mqttServerIP, 1883, callback, espClient);
@@ -73,9 +76,9 @@ void setupWifi() {
     while (status != WL_CONNECTED) {
         Serial.println();
         Serial.print("Attempting to connect to WPA SSID: ");
-        Serial.println(ssid);
+        Serial.println(WIFI_SSID);
         // Connect to WPA/WPA2 network
-        status = WiFi.begin(ssid, pass);
+        status = WiFi.begin(WIFI_SSID, WIFI_PASS);
     }
     // you're connected now, so print out the data
     Serial.println("You're connected to the network");
@@ -98,7 +101,8 @@ boolean reconnectMQTT() {
     }
     return mqttClient.connected();
 }
-void logToMQTT(char* topic, char* payload) {
+
+void logToMQTT(char *topic, char *payload) {
     mqttClient.publish(topic, payload);
 
 }
@@ -158,24 +162,22 @@ void handlerPump(long now) {
 }
 
 void setup() {
-    // initialize serial for debugging
-    Serial.begin(115200);
-    // initialize serial for ESP module
-    Serial3.begin(115200);
+    Serial.begin(115200);                   // initialize serial for debugging
+    Serial3.begin(115200);                  // initialize serial for ESP module
 
-    pinMode(RELAY_PORT_1, OUTPUT);        // 8 relay output
-    pinMode(RELAY_PORT_2, OUTPUT);        // 7 relay output
-    pinMode(RELAY_PORT_3, OUTPUT);        // 6 relay output
-    pinMode(RELAY_PORT_4, OUTPUT);        // 5 relay output
-    pinMode(RELAY_PORT_5, OUTPUT);        // 4 relay output
-    pinMode(RELAY_PORT_6, OUTPUT);        // 3 relay output
-    pinMode(RELAY_PORT_7, OUTPUT);        // 2 relay output
-    pinMode(RELAY_PORT_8, OUTPUT);        // 1 relay output
+    pinMode(RELAY_PORT_1, OUTPUT);          // 8 relay output
+    pinMode(RELAY_PORT_2, OUTPUT);          // 7 relay output
+    pinMode(RELAY_PORT_3, OUTPUT);          // 6 relay output
+    pinMode(RELAY_PORT_4, OUTPUT);          // 5 relay output
+    pinMode(RELAY_PORT_5, OUTPUT);          // 4 relay output
+    pinMode(RELAY_PORT_6, OUTPUT);          // 3 relay output
+    pinMode(RELAY_PORT_7, OUTPUT);          // 2 relay output
+    pinMode(RELAY_PORT_8, OUTPUT);          // 1 relay output
 
-    pinMode(MIN_WATER_LEVEL_1, INPUT);    // water sensor
-    pinMode(MAX_WATER_LEVEL_1, INPUT);    // water sensor
-    pinMode(MIN_WATER_LEVEL_2, INPUT);    // water sensor
-    pinMode(MAX_WATER_LEVEL_2, INPUT);    // water sensor
+    pinMode(MIN_WATER_LEVEL_1, INPUT);      // water sensor
+    pinMode(MAX_WATER_LEVEL_1, INPUT);      // water sensor
+    pinMode(MIN_WATER_LEVEL_2, INPUT);      // water sensor
+    pinMode(MAX_WATER_LEVEL_2, INPUT);      // water sensor
 
     // отключаем порты реле
     digitalWrite(RELAY_PORT_1, HIGH);
