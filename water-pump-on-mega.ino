@@ -96,7 +96,6 @@ boolean reconnectMQTT() {
     String clientId = "ESP8266Client-";
     clientId += String(random(0xffff), HEX);
     if (mqttClient.connect(clientId.c_str())) {
-        //  if (mqttClient.connect("arduinoClient")) {
         Serial.println("MQTT connected");
         // Once connected, publish an announcement...
         mqttClient.publish("kaz9/mega/ping", 1);
@@ -104,31 +103,6 @@ boolean reconnectMQTT() {
     }
     return mqttClient.connected();
 }
-
-//void reconnect() {
-//  // Loop until we're reconnected
-//  while (!mqttClient.connected()) {
-//    Serial.print("Attempting MQTT connection...");
-//    // Create a random client ID
-//    String clientId = "ESP8266Client-";
-//    clientId += String(random(0xffff), HEX);
-//    // Attempt to connect
-//    if (mqttClient.connect(clientId.c_str())) {
-//      Serial.println("connected");
-//      // Once connected, publish an announcement...
-//      mqttClient.publish("kaz9/mega", "connected");
-//      // ... and resubscribe
-//      //      mqttClient.subscribe("kaz9/mega/water-pump/command");
-//      mqttClient.subscribe("kaz9/mega/#");
-//    } else {
-//      Serial.print("failed, rc=");
-//      Serial.print(mqttClient.state());
-//      Serial.println(" try again in 5 seconds");
-//      // Wait 5 seconds before retrying
-//      delay(MQTT_RECONNECT_TIMEOUT);
-//    }
-//  }
-//}
 void logToMQTT(char* topic, char* payload) {
     mqttClient.publish(topic, payload);
 
