@@ -40,8 +40,8 @@ long mqttReconnectTimestamp = 0;
 long mqttUpdateTimestamp = 0;
 long mqttPingTimestamp = 0;
 long mqttMessagesToSendCount = 0;
-char * mqttTopics[MQTT_MAX_MESSAGES_COUNT];
-char * mqttPayloads[MQTT_MAX_MESSAGES_COUNT];
+char *mqttTopics[MQTT_MAX_MESSAGES_COUNT];
+char *mqttPayloads[MQTT_MAX_MESSAGES_COUNT];
 
 const int MIN_VOLTS_VALUE = 100;
 bool isWaterPump1Enabled = false;
@@ -82,7 +82,7 @@ void setupWifi() {
         Serial.print(WIFI_SSID);
         Serial.print(" \\ ");
         Serial.println(WIFI_PASS);
-       // Connect to WPA/WPA2 network
+        // Connect to WPA/WPA2 network
         status = WiFi.begin(WIFI_SSID, WIFI_PASS);
     }
     // you're connected now, so print out the data
@@ -94,11 +94,12 @@ void setupWifi() {
 }
 
 boolean reconnectMQTT() {
-    Serial.println("Attempting MQTT connection...");
+    Serial.println("\tAttempting MQTT connection...");
     // Create a random client ID
-    String clientId = "ESP8266Client-";
-    clientId += String(random(0xffff), HEX);
-    if (mqttClient.connect(clientId.c_str())) {
+//    String clientId = "ESP8266Client-";
+//    clientId += String(random(0xffff), HEX);
+//    if (mqttClient.connect(clientId.c_str())) {
+    if (mqttClient.connect(MQTT_CLIENT_NAME)) {
         Serial.println("MQTT connected");
         // Once connected, publish an announcement...
         mqttClient.publish("kaz9/mega/ping", 1);
@@ -108,16 +109,18 @@ boolean reconnectMQTT() {
 }
 
 void logToMQTT(char *topic, char *payload) {
-    if (mqttMessagesToSendCount < MQTT_MAX_MESSAGES_COUNT) {
-        mqttMessagesToSendCount++;
-        mqttTopics[mqttMessagesToSendCount] = topic;
-        mqttPayloads[mqttMessagesToSendCount] = payload;
-    }
+    mqttClient.publish(topic, payload);
+//    if (mqttMessagesToSendCount < MQTT_MAX_MESSAGES_COUNT) {
+//        mqttMessagesToSendCount++;
+//        mqttTopics[mqttMessagesToSendCount] = topic;
+//        mqttPayloads[mqttMessagesToSendCount] = payload;
+//    }
 }
 
 void handleMQTT(long now) {
     if (now - mqttUpdateTimestamp > MQTT_UPDATE_TIMEOUT) {
         if (!mqttClient.connected()) {
+            Serial.println("\tdisconnected from mqtt");
             if (now - mqttReconnectTimestamp > MQTT_RECONNECT_TIMEOUT) {
                 mqttReconnectTimestamp = now;
                 mqttUpdateTimestamp = 0;
@@ -139,39 +142,53 @@ void handleMQTT(long now) {
             mqttClient.loop();
 
             // send messages to mqtt
-            for (int i = 0; i < mqttMessagesToSendCount; i++) {
-                Serial.print("\tpublish to '");
-                Serial.print(mqttTopics[mqttMessagesToSendCount]);
-                Serial.print("' with payload '");
-                Serial.print(mqttPayloads[mqttMessagesToSendCount]);
-                Serial.println("'");
-
-                mqttClient.publish(mqttTopics[mqttMessagesToSendCount], mqttPayloads[mqttMessagesToSendCount]);
-            }
-            mqttMessagesToSendCount = 0;
+//            for (int i = 0; i < mqttMessagesToSendCount; i++) {
+//                Serial.print("\tpublish to '");
+//                Serial.print(mqttTopics[mqttMessagesToSendCount]);
+//                Serial.print("' with payload '");
+//                Serial.print(mqttPayloads[mqttMessagesToSendCount]);
+//                Serial.println("'");
+//
+//                mqttClient.publish(mqttTopics[mqttMessagesToSendCount], mqttPayloads[mqttMessagesToSendCount]);
+//            }
+//            mqttMessagesToSendCount = 0;
         }
     }
 }
 
 void handlerPump(long now) {
     if (now - waterSensorTimestamp > WATER_SENSOR_TIMEOUT) {
-        logToMQTT("kaz9/mega/water-pump1/duration", now - waterSensorTimestamp);
         waterSensorTimestamp = now;
 
         bool minWaterLevel1 = analogRead(MIN_WATER_LEVEL_1) > MIN_VOLTS_VALUE;
         bool maxWaterLevel1 = analogRead(MAX_WATER_LEVEL_1) > MIN_VOLTS_VALUE;
         bool minWaterLevel2 = analogRead(MIN_WATER_LEVEL_2) > MIN_VOLTS_VALUE;
         bool maxWaterLevel2 = analogRead(MAX_WATER_LEVEL_2) > MIN_VOLTS_VALUE;
+        Serial.print("min: ");
+        Serial.print(minWaterLevel1);
+        Serial.print(", max: ");
+        Serial.println(maxWaterLevel1);
+
+        logToMQTT("kaz9/mega/water-pump1/min", minWaterLevel1 ? 1 : 0);
+        logToMQTT("kaz9/mega/water-pump1/max", maxWaterLevel1 ? 1 : 0);
 
         if (!minWaterLevel1 && !isWaterPump1Enabled) {
             isWaterPump1Enabled = true;
             lastWaterPumpStartTimestamp = now;
             digitalWrite(RELAY_PORT_1, !isWaterPump1Enabled);
+
+            Serial.println("\tpump is ON");
+
+            logToMQTT("kaz9/mega/water-pump1/on", now);
         } else if (maxWaterLevel1 && isWaterPump1Enabled) {
             isWaterPump1Enabled = false;
             digitalWrite(RELAY_PORT_1, !isWaterPump1Enabled);
 
-            logToMQTT("kaz9/mega/water-pump1/duration", now - lastWaterPumpStartTimestamp);
+            Serial.print("\tpump is OFF");
+            Serial.print(", work time: ");
+            Serial.println(now - lastWaterPumpStartTimestamp);
+
+            logToMQTT("kaz9/mega/water-pump1/off", now - lastWaterPumpStartTimestamp);
         }
     }
 }
