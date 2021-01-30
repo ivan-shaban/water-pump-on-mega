@@ -1,3 +1,7 @@
+### Setup
+
+Rename file `credentials.h.template` to `credentials.h` and fill it with your private data.
+
 ### TODOs
 
 - отправлять среднее время работы насоса в mqtt
