@@ -1,7 +1,6 @@
-#include "WiFiEsp.h"
-#include <PubSubClient.h>
-#include "Data.h"
 #include "credentials.h"
+#include <WiFiEspAT.h>
+#include <PubSubClient.h>
 
 // Emulate Serial1 on pins 6/7 if not present
 #ifndef HAVE_HWSERIAL1
@@ -11,10 +10,12 @@
 SoftwareSerial Serial1(6, 7); // RX, TX
 #endif
 
+#define STRING_LEN 128
+
 #define MQTT_RECONNECT_TIMEOUT 5000
 #define MQTT_UPDATE_TIMEOUT 1000
-#define MQTT_PING_TIMEOUT 30000
-#define MQTT_MAX_MESSAGES_COUNT 100
+#define MQTT_PING_TIMEOUT 500
+//#define MQTT_PING_TIMEOUT 30000
 #define WATER_SENSOR_TIMEOUT 300
 
 #define MIN_WATER_LEVEL_1 12
@@ -36,12 +37,15 @@ SoftwareSerial Serial1(6, 7); // RX, TX
 int status = WL_IDLE_STATUS;     // the Wifi radio's status
 
 // mqtt section
-long mqttReconnectTimestamp = 0;
-long mqttUpdateTimestamp = 0;
-long mqttPingTimestamp = 0;
-long mqttMessagesToSendCount = 0;
-char *mqttTopics[MQTT_MAX_MESSAGES_COUNT];
-char *mqttPayloads[MQTT_MAX_MESSAGES_COUNT];
+unsigned long mqttReconnectTimestamp = 0;
+unsigned long mqttUpdateTimestamp = 0;
+unsigned long mqttPingTimestamp = 0;
+char mqttPingTopic[STRING_LEN];
+char mqttWaterPumpActionTopic[STRING_LEN];
+char mqttWaterPumpMinStatusTopic[STRING_LEN];
+char mqttWaterPumpMaxStatusTopic[STRING_LEN];
+char mqttWaterPumpStatusTopic[STRING_LEN];
+char mqttWaterPumpWorkTimeTopic[STRING_LEN];
 
 const int MIN_VOLTS_VALUE = 100;
 bool isWaterPump1Enabled = false;
@@ -60,8 +64,8 @@ void callback(char *topic, byte *payload, unsigned int length) {
     Serial.println();
 }
 
-// Initialize the Ethernet client object
-WiFiEspClient espClient;
+
+WiFiClient espClient;
 PubSubClient mqttClient(MQTT_SERVER_IP, 1883, callback, espClient);
 
 void setupWifi() {
@@ -74,6 +78,14 @@ void setupWifi() {
         // don't continue
         while (true);
     }
+
+    WiFi.disconnect();                  // to clear the way. not persistent
+    WiFi.setPersistent();               // set the following WiFi connection as persistent
+    WiFi.endAP();                       // to disable default automatic start of persistent AP at startup
+
+    WiFi.hostname(DEVICE_PUBLIC_NAME);
+    // setting up static ip for our device
+    WiFi.config(DEVICE_IP, GATEWAY_IP, GATEWAY_IP, NETWORK_MASK);
 
     // attempt to connect to WiFi network
     while (status != WL_CONNECTED) {
@@ -95,35 +107,44 @@ void setupWifi() {
 
 boolean reconnectMQTT() {
     Serial.println("\tAttempting MQTT connection...");
-    // Create a random client ID
-//    String clientId = "ESP8266Client-";
-//    clientId += String(random(0xffff), HEX);
-//    if (mqttClient.connect(clientId.c_str())) {
+
     if (mqttClient.connect(MQTT_CLIENT_NAME)) {
+        // create all topics to prevent construction in runtime
+        String temp = String(MQTT_TOPIC_PREFIX) + String(MQTT_CLIENT_NAME) + String("/ping");
+        temp.toCharArray(mqttPingTopic, STRING_LEN);
+
+        temp = String(MQTT_TOPIC_PREFIX) + String(MQTT_CLIENT_NAME) + String("/wp1");
+        temp.toCharArray(mqttWaterPumpActionTopic, STRING_LEN);
+
+        temp = String(MQTT_TOPIC_PREFIX) + String(MQTT_CLIENT_NAME) + String("/wp1/min");
+        temp.toCharArray(mqttWaterPumpMinStatusTopic, STRING_LEN);
+
+        temp = String(MQTT_TOPIC_PREFIX) + String(MQTT_CLIENT_NAME) + String("/wp1/max");
+        temp.toCharArray(mqttWaterPumpMaxStatusTopic, STRING_LEN);
+
+        temp = String(MQTT_TOPIC_PREFIX) + String(MQTT_CLIENT_NAME) + String("/wp1/status");
+        temp.toCharArray(mqttWaterPumpStatusTopic, STRING_LEN);
+
+        temp = String(MQTT_TOPIC_PREFIX) + String(MQTT_CLIENT_NAME) + String("/wp1/worktime");
+        temp.toCharArray(mqttWaterPumpWorkTimeTopic, STRING_LEN);
+
         Serial.println("MQTT connected");
+
         // Once connected, publish an announcement...
-        mqttClient.publish("kaz9/mega/ping", 1);
-        mqttClient.subscribe("kaz9/mega/water-pump");
+        mqttClient.publish(mqttPingTopic, 1, true);
+        mqttClient.subscribe(mqttWaterPumpActionTopic);
     }
     return mqttClient.connected();
 }
 
-void logToMQTT(char *topic, char *payload) {
-    mqttClient.publish(topic, payload);
-//    if (mqttMessagesToSendCount < MQTT_MAX_MESSAGES_COUNT) {
-//        mqttMessagesToSendCount++;
-//        mqttTopics[mqttMessagesToSendCount] = topic;
-//        mqttPayloads[mqttMessagesToSendCount] = payload;
-//    }
-}
-
 void handleMQTT(long now) {
     if (now - mqttUpdateTimestamp > MQTT_UPDATE_TIMEOUT) {
+        mqttUpdateTimestamp = now;
+
         if (!mqttClient.connected()) {
             Serial.println("\tdisconnected from mqtt");
             if (now - mqttReconnectTimestamp > MQTT_RECONNECT_TIMEOUT) {
                 mqttReconnectTimestamp = now;
-                mqttUpdateTimestamp = 0;
                 // Attempt to reconnect
                 if (reconnectMQTT()) {
                     mqttReconnectTimestamp = 0;
@@ -136,22 +157,10 @@ void handleMQTT(long now) {
         } else {
             if (now - mqttPingTimestamp > MQTT_PING_TIMEOUT) {
                 mqttPingTimestamp = now;
-                logToMQTT("kaz9/mega/ping", "1");
+                Serial.println("\tping");
+                mqttClient.publish(mqttPingTopic, 1, true);
             }
-            mqttUpdateTimestamp = now;
             mqttClient.loop();
-
-            // send messages to mqtt
-//            for (int i = 0; i < mqttMessagesToSendCount; i++) {
-//                Serial.print("\tpublish to '");
-//                Serial.print(mqttTopics[mqttMessagesToSendCount]);
-//                Serial.print("' with payload '");
-//                Serial.print(mqttPayloads[mqttMessagesToSendCount]);
-//                Serial.println("'");
-//
-//                mqttClient.publish(mqttTopics[mqttMessagesToSendCount], mqttPayloads[mqttMessagesToSendCount]);
-//            }
-//            mqttMessagesToSendCount = 0;
         }
     }
 }
@@ -169,8 +178,8 @@ void handlerPump(long now) {
         Serial.print(", max: ");
         Serial.println(maxWaterLevel1);
 
-        logToMQTT("kaz9/mega/water-pump1/min", minWaterLevel1 ? 1 : 0);
-        logToMQTT("kaz9/mega/water-pump1/max", maxWaterLevel1 ? 1 : 0);
+        mqttClient.publish(mqttWaterPumpMinStatusTopic, minWaterLevel1 ? 1 : 0, true);
+        mqttClient.publish(mqttWaterPumpMaxStatusTopic, maxWaterLevel1 ? 1 : 0, true);
 
         if (!minWaterLevel1 && !isWaterPump1Enabled) {
             isWaterPump1Enabled = true;
@@ -179,7 +188,7 @@ void handlerPump(long now) {
 
             Serial.println("\tpump is ON");
 
-            logToMQTT("kaz9/mega/water-pump1/on", now);
+            mqttClient.publish(mqttWaterPumpStatusTopic, 1, true);
         } else if (maxWaterLevel1 && isWaterPump1Enabled) {
             isWaterPump1Enabled = false;
             digitalWrite(RELAY_PORT_1, !isWaterPump1Enabled);
@@ -188,7 +197,8 @@ void handlerPump(long now) {
             Serial.print(", work time: ");
             Serial.println(now - lastWaterPumpStartTimestamp);
 
-            logToMQTT("kaz9/mega/water-pump1/off", now - lastWaterPumpStartTimestamp);
+            mqttClient.publish(mqttWaterPumpStatusTopic, 0, true);
+            mqttClient.publish(mqttWaterPumpWorkTimeTopic, now - lastWaterPumpStartTimestamp, true);
         }
     }
 }
@@ -220,6 +230,7 @@ void setup() {
     digitalWrite(RELAY_PORT_6, HIGH);
     digitalWrite(RELAY_PORT_7, HIGH);
     digitalWrite(RELAY_PORT_8, HIGH);
+
     setupWifi();
 }
 
