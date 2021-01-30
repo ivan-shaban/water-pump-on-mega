@@ -14,7 +14,7 @@ SoftwareSerial Serial1(6, 7); // RX, TX
 
 #define MQTT_RECONNECT_TIMEOUT 5000
 #define MQTT_UPDATE_TIMEOUT 1000
-#define MQTT_PING_TIMEOUT 500
+#define MQTT_PING_TIMEOUT 5000
 //#define MQTT_PING_TIMEOUT 30000
 #define WATER_SENSOR_TIMEOUT 300
 
@@ -131,7 +131,7 @@ boolean reconnectMQTT() {
         Serial.println("MQTT connected");
 
         // Once connected, publish an announcement...
-        mqttClient.publish(mqttPingTopic, 1, true);
+        mqttClient.publish(mqttPingTopic, "1", true);
         mqttClient.subscribe(mqttWaterPumpActionTopic);
     }
     return mqttClient.connected();
@@ -158,7 +158,7 @@ void handleMQTT(long now) {
             if (now - mqttPingTimestamp > MQTT_PING_TIMEOUT) {
                 mqttPingTimestamp = now;
                 Serial.println("\tping");
-                mqttClient.publish(mqttPingTopic, 1, true);
+                mqttClient.publish(mqttPingTopic, "1", true);
             }
             mqttClient.loop();
         }
@@ -178,8 +178,8 @@ void handlerPump(long now) {
         Serial.print(", max: ");
         Serial.println(maxWaterLevel1);
 
-        mqttClient.publish(mqttWaterPumpMinStatusTopic, minWaterLevel1 ? 1 : 0, true);
-        mqttClient.publish(mqttWaterPumpMaxStatusTopic, maxWaterLevel1 ? 1 : 0, true);
+        mqttClient.publish(mqttWaterPumpMinStatusTopic, minWaterLevel1 ? "1" : "0", true);
+        mqttClient.publish(mqttWaterPumpMaxStatusTopic, maxWaterLevel1 ? "1" : "0", true);
 
         if (!minWaterLevel1 && !isWaterPump1Enabled) {
             isWaterPump1Enabled = true;
@@ -188,7 +188,7 @@ void handlerPump(long now) {
 
             Serial.println("\tpump is ON");
 
-            mqttClient.publish(mqttWaterPumpStatusTopic, 1, true);
+            mqttClient.publish(mqttWaterPumpStatusTopic, "1", true);
         } else if (maxWaterLevel1 && isWaterPump1Enabled) {
             isWaterPump1Enabled = false;
             digitalWrite(RELAY_PORT_1, !isWaterPump1Enabled);
@@ -197,8 +197,12 @@ void handlerPump(long now) {
             Serial.print(", work time: ");
             Serial.println(now - lastWaterPumpStartTimestamp);
 
-            mqttClient.publish(mqttWaterPumpStatusTopic, 0, true);
-            mqttClient.publish(mqttWaterPumpWorkTimeTopic, now - lastWaterPumpStartTimestamp, true);
+            // convert pump uptime to str to publish as retained message
+            char workTime[40];
+            sprintf(workTime,"%u",now - lastWaterPumpStartTimestamp);
+
+            mqttClient.publish(mqttWaterPumpStatusTopic, "0", true);
+            mqttClient.publish(mqttWaterPumpWorkTimeTopic, workTime, true);
         }
     }
 }
